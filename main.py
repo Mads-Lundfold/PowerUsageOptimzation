@@ -9,30 +9,35 @@ from data_grapper import DataManager
 start = 1388734400
 end = 1398766800
 
+TESTING_OPT = True
+
 dm = DataManager()
 dm.get_usage_data(start, end)
 print("Successfully loaded the data.")
 running = True
 
-while(running):
-    print("Enter a command:")
-    command = input(">> ")
+if TESTING_OPT:
+    dm.optimize()
+else:
+    while(running):
+        print("Enter a command:")
+        command = input(">> ")
 
-    match command:
-        case 'load':
-            dm.get_usage_data(start, end)
+        match command:
+            case 'load':
+                dm.get_usage_data(start, end)
 
-            print("Successfully loaded the data.")
-        case 'mine':
-            support = 0.10
-            confidence = 0.60
-            dm.mine_temporal_patterns(support, confidence)
-        case 'o':
-            dm.optimize()
-        case 'q':
-            running = False
-        case '_':
-            print('Command Not recognized.')
+                print("Successfully loaded the data.")
+            case 'mine':
+                support = 0.10
+                confidence = 0.60
+                dm.mine_temporal_patterns(support, confidence)
+            case 'o':
+                dm.optimize()
+            case 'q':
+                running = False
+            case '_':
+                print('Command Not recognized.')
     
 
 #data = dm.get_usage_data(start, end)

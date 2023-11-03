@@ -2,7 +2,7 @@ import pandas as pd
 import datetime
 import os
 import numpy as np
-from pulp import LpProblem, LpVariable, LpBinary, LpMinimize
+from pulp import LpProblem, LpVariable, LpBinary, LpMinimize, lpSum
 #import psutil
 
 USAGE_THRESHOLD = 0.2
@@ -109,7 +109,7 @@ class DataManager():
         
         # Sort events in chronological order
         events = sorted(events, key=lambda x: x['start'])
-        print(pd.DataFrame(events))
+        #print(pd.DataFrame(events))
         return pd.DataFrame(events)
     
     def read_events_from_csv(self, filename):
@@ -146,9 +146,9 @@ class DataManager():
 
             time_associations[app] = (list(map(lambda x: x.hour*4 + (x.minute // 15), high_usage)))
 
-        print(time_associations)
+        #print(time_associations)
         self.time_associations = time_associations
-        print(self.time_associations)
+        #print(self.time_associations)
 
            
     # --------------------------------------------------------
@@ -163,13 +163,14 @@ class DataManager():
     # --------------------------------------------------------
     #               OPTIMIZATION
     # --------------------------------------------------------
+    # TODO Break this up, it's really hefty
     def optimize(self):
         prices = self.get_price_data(datetime.datetime(2015, 2, 1), datetime.datetime(2015, 2, 2))
 
         #print(prices)
 
         price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
-        print(price_vector)
+        #print(price_vector)
 
         events = self.read_events_from_csv('events.csv').drop(columns=['end', 'day'])
         events = events[events['start'].between(datetime.datetime(2014, 2, 1), datetime.datetime(2014, 2, 2))]
@@ -178,7 +179,7 @@ class DataManager():
         events['duration'] = events['duration'].apply(lambda x: x // 15)
         events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
 
-        #print(events)
+        print(events)
         #print(self.time_associations)
 
         potential_start_times = {}
@@ -197,8 +198,8 @@ class DataManager():
 
             potential_start_times[str(event.Index)] = valid_start_times
         
-        for key in potential_start_times:
-            print(f'{key}: {potential_start_times[key]}')
+        for key, val in potential_start_times.items():
+            print(key, val)
 
 
         # LINEAR PRORGAMMING SHIT
@@ -208,6 +209,7 @@ class DataManager():
         problem = LpProblem("Appliance_Rescheduling", LpMinimize)
 
         # Create binary variables for each appliance we need to schedule
+        variables = {}
         for key in potential_start_times:
 
             # Skip if the appliance does not have any potential starting times
@@ -216,20 +218,36 @@ class DataManager():
             
             # Binary variable for each potential starting time of the event. 
             # If the event is started at the time slot, then the value is 1.
-            variables = {value: LpVariable(f'{key}_{value}', cat=LpBinary) for value in potential_start_times[key]}
-            print(variables)
+            variables[key] = {value: LpVariable(f'{key}_{value}', cat=LpBinary) for value in potential_start_times[key]}
+            #print(variables[key])
 
             # Constraint: Each event can only have one starting time
-            problem += sum(variables[value] for value in potential_start_times[key]) == 1
+            problem += sum(variables[key][value] for value in potential_start_times[key]) == 1
 
-            # Objective: Find the lowest cost for the event
-            objective_x = sum(variables[value] * np.sum(events.loc[int(key), 'profile'] * price_vector[value : value + int(events.loc[int(key), 'duration'])]) for value in potential_start_times[key])
+        # For every event, find the beginning time slot where the price times profile is the lowest
+        objective = sum(sum(variables[key][value] * np.sum(events.loc[int(key), 'profile'] * price_vector[value : value + int(events.loc[int(key), 'duration'])]) for value in potential_start_times[key]) for key in potential_start_times)
 
-            problem += objective_x
-
-
-        problem.solve()
+        problem += objective
         
+        # TODO: Constraint that two events of same appliance cannot overlap.
+
+        # FOLLOWS LOGIC: Event 317 must end before event 321 begins 
+        problem += sum(value * var for value, var in variables['317'].items()) + int(events.loc[317, 'duration']) <= sum(value * var for value, var in variables['321'].items())
+
+        # CONTAINS LOGIC: e1 > e2
+        # e1 must begin before e2 begins
+        problem += sum(value * var for value, var in variables['327'].items()) <= sum(value * var for value, var in variables['326'].items())
+        # e1 must end after e2 ends
+        problem += sum(value * var for value, var in variables['324'].items()) + int(events.loc[324, 'duration']) >= sum(value * var for value, var in variables['326'].items()) + int(events.loc[326, 'duration'])
+
+        # OVERLAPS LOGIC: e1 | e2
+        # e1 must end before e2 ends
+        problem += sum(value * var for value, var in variables['328'].items()) + int(events.loc[328, 'duration']) <= sum(value * var for value, var in variables['323'].items()) + int(events.loc[323, 'duration'])
+        # e1 must end after e2 begins
+        problem += sum(value * var for value, var in variables['328'].items()) + int(events.loc[328, 'duration']) >= sum(value * var for value, var in variables['323'].items())
+                                                                                           
+        problem.solve()
+
         # Print the starting times for each event after solving the problem
         for v in problem.variables():
             if v.varValue == 1:
