@@ -178,7 +178,7 @@ class DataManager():
         events['duration'] = events['duration'].apply(lambda x: x // 15)
         events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
 
-        print(events)
+        #print(events)
         #print(self.time_associations)
 
         potential_start_times = {}
@@ -197,7 +197,8 @@ class DataManager():
 
             potential_start_times[str(event.Index)] = valid_start_times
         
-        print(potential_start_times)
+        for key in potential_start_times:
+            print(f'{key}: {potential_start_times[key]}')
 
 
         # LINEAR PRORGAMMING SHIT
@@ -206,25 +207,31 @@ class DataManager():
         # Define the minimization problem
         problem = LpProblem("Appliance_Rescheduling", LpMinimize)
 
-        # Define binary variables for each possible starting time
-        x_variables = {value: LpVariable(f'x_{value}', cat=LpBinary) for value in potential_start_times['317']}
+        # Create binary variables for each appliance we need to schedule
+        for key in potential_start_times:
 
-        # Constraint: Each event can only have one starting time
-        problem += sum(x_variables[value] for value in potential_start_times['317']) == 1
+            # Skip if the appliance does not have any potential starting times
+            if len(potential_start_times[key]) == 0:
+                continue
+            
+            # Binary variable for each potential starting time of the event. 
+            # If the event is started at the time slot, then the value is 1.
+            variables = {value: LpVariable(f'{key}_{value}', cat=LpBinary) for value in potential_start_times[key]}
+            print(variables)
 
+            # Constraint: Each event can only have one starting time
+            problem += sum(variables[value] for value in potential_start_times[key]) == 1
 
-        for value in potential_start_times['317']:
-            print(value)
-            print(x_variables[value])
-            print(np.sum(events.loc[317, 'profile'] * price_vector[value : value + int(events.loc[317, 'duration'])]))
+            # Objective: Find the lowest cost for the event
+            objective_x = sum(variables[value] * np.sum(events.loc[int(key), 'profile'] * price_vector[value : value + int(events.loc[int(key), 'duration'])]) for value in potential_start_times[key])
 
-        # Objective: Find the lowest cost for the event
-        objective_x = sum(x_variables[value] * np.sum(events.loc[317, 'profile'] * price_vector[value : value + int(events.loc[317, 'duration'])]) for value in potential_start_times['317'])
+            problem += objective_x
 
-    
-        #objective_x = sum(np.sum(events['profile'][317], price_vector[value * x_variables[value] : value*x_variables[value] + events['duration'][317]]) for value in potential_start_times['317'])
-        problem += objective_x
 
         problem.solve()
-
         
+        # Print the starting times for each event after solving the problem
+        for v in problem.variables():
+            if v.varValue == 1:
+                print(v.name, "=", v.varValue)
+
