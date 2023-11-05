@@ -17,6 +17,7 @@ print("Successfully loaded the data.")
 running = True
 
 if TESTING_OPT:
+    #dm.load_temporal_patterns('output/Experiment_minsup0.1_minconf_0.6/level2.json')
     dm.optimize()
 else:
     while(running):

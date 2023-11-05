@@ -2,7 +2,8 @@ import pandas as pd
 import datetime
 import os
 import numpy as np
-from pulp import LpProblem, LpVariable, LpBinary, LpMinimize, lpSum
+from pulp import LpProblem, LpVariable, LpBinary, LpMinimize
+import re
 #import psutil
 
 USAGE_THRESHOLD = 0.2
@@ -159,27 +160,58 @@ class DataManager():
         print(command)
         os.system(command)
 
+    # This function is a mess, but I will have to change how pattern mining works to change that.
+    def find_patterns_on_day(self, file_path, events):
+        extracted_data = pd.read_json(file_path)
+
+        patterns = list()
+
+        for data in extracted_data['patterns']:
+            for pattern in data:
+                for key in pattern['time']:
+                    if key == str(events['day'].iloc[0]):
+                        pattern_type = re.split('(>|->|\|)', pattern['pattern'])
+                        print(pattern_type)
+
+                        first_time = pd.to_datetime(pattern['time'][key][0][0][0]).time()
+                        first_time = first_time.hour*4 + (first_time.minute // 15)
+
+                        second_time = pd.to_datetime(pattern['time'][key][0][1][0]).time()
+                        second_time = second_time.hour*4 + (second_time.minute // 15)
+                        print(first_time, second_time)
+
+                        first_event = events.query('start == @first_time and app == @pattern_type[0]').index.item()
+                        second_event = events.query('start == @second_time and app == @pattern_type[2]').index.item()
+                        patterns.append({'type': pattern_type[1], 
+                                         'first': first_event,
+                                          'second': second_event})
+                        
+        print(patterns)
+
+        return patterns
 
     # --------------------------------------------------------
     #               OPTIMIZATION
     # --------------------------------------------------------
     # TODO Break this up, it's really hefty
     def optimize(self):
-        prices = self.get_price_data(datetime.datetime(2015, 2, 1), datetime.datetime(2015, 2, 2))
+        prices = self.get_price_data(datetime.datetime(2015, 4, 1), datetime.datetime(2015, 4, 2))
 
         #print(prices)
 
         price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
-        #print(price_vector)
+        print(price_vector)
 
-        events = self.read_events_from_csv('events.csv').drop(columns=['end', 'day'])
-        events = events[events['start'].between(datetime.datetime(2014, 2, 1), datetime.datetime(2014, 2, 2))]
+        events = self.read_events_from_csv('events.csv').drop(columns=['end'])
+        events = events[events['start'].between(datetime.datetime(2014, 4, 1), datetime.datetime(2014, 4, 2))]
 
         events['start'] = events['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
         events['duration'] = events['duration'].apply(lambda x: x // 15)
         events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
 
         print(events)
+
+        patterns = self.find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events)
         #print(self.time_associations)
 
         potential_start_times = {}
@@ -201,6 +233,14 @@ class DataManager():
         for key, val in potential_start_times.items():
             print(key, val)
 
+        '''
+        print('COST BEFORE OPTIMIZATION:')
+        total_cost = 0
+        for e in events.itertuples():
+            cost = np.sum(e.profile * price_vector[int(e.start) : int(e.start) + int(e.duration)])
+            total_cost = total_cost + cost
+        print(total_cost)
+        '''
 
         # LINEAR PRORGAMMING SHIT
         # Just try to make it work with the washing machine, event 317
@@ -230,7 +270,7 @@ class DataManager():
         problem += objective
         
         # TODO: Constraint that two events of same appliance cannot overlap.
-
+        '''
         # FOLLOWS LOGIC: Event 317 must end before event 321 begins 
         problem += sum(value * var for value, var in variables['317'].items()) + int(events.loc[317, 'duration']) <= sum(value * var for value, var in variables['321'].items())
 
@@ -245,8 +285,22 @@ class DataManager():
         problem += sum(value * var for value, var in variables['328'].items()) + int(events.loc[328, 'duration']) <= sum(value * var for value, var in variables['323'].items()) + int(events.loc[323, 'duration'])
         # e1 must end after e2 begins
         problem += sum(value * var for value, var in variables['328'].items()) + int(events.loc[328, 'duration']) >= sum(value * var for value, var in variables['323'].items())
-                                                                                           
+        '''     
+
+        # Change event index to a column
+        same_type_events = events.drop(columns=['start', 'duration', 'day', 'profile']).reset_index()
+        same_type_events = same_type_events.groupby('app')['index'].apply(list)
+        # Only keep applications that have more than 2 events in the day
+        same_type_events = same_type_events[(same_type_events.str.len()) >= 2]
+        print(same_type_events)
+
+        for p in patterns:
+            if p['type'] == '>':
+                problem += sum(value * var for value, var in variables[str(p['first'])].items()) <= sum(value * var for value, var in variables[str(p['second'])].items())
+                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) >= sum(value * var for value, var in variables[str(p['second'])].items()) + int(events.loc[int(p['second']), 'duration'])
+
         problem.solve()
+
 
         # Print the starting times for each event after solving the problem
         for v in problem.variables():
