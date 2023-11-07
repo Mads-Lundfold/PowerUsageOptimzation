@@ -195,7 +195,7 @@ class DataManager():
     # --------------------------------------------------------
     # TODO Break this up, it's really hefty
     def optimize(self):
-        prices = self.get_price_data(datetime.datetime(2015, 4, 1), datetime.datetime(2015, 4, 2))
+        prices = self.get_price_data(datetime.datetime(2015, 2, 1), datetime.datetime(2015, 2, 2))
 
         #print(prices)
 
@@ -203,7 +203,7 @@ class DataManager():
         print(price_vector)
 
         events = self.read_events_from_csv('events.csv').drop(columns=['end'])
-        events = events[events['start'].between(datetime.datetime(2014, 4, 1), datetime.datetime(2014, 4, 2))]
+        events = events[events['start'].between(datetime.datetime(2014, 2, 1), datetime.datetime(2014, 2, 2))]
 
         events['start'] = events['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
         events['duration'] = events['duration'].apply(lambda x: x // 15)
@@ -233,14 +233,15 @@ class DataManager():
         for key, val in potential_start_times.items():
             print(key, val)
 
-        '''
+        
         print('COST BEFORE OPTIMIZATION:')
         total_cost = 0
         for e in events.itertuples():
+            if (e.start + e.duration > 96): continue
             cost = np.sum(e.profile * price_vector[int(e.start) : int(e.start) + int(e.duration)])
             total_cost = total_cost + cost
         print(total_cost)
-        '''
+        
 
         # LINEAR PRORGAMMING SHIT
         # Just try to make it work with the washing machine, event 317
@@ -270,34 +271,23 @@ class DataManager():
         problem += objective
         
         # TODO: Constraint that two events of same appliance cannot overlap.
-        '''
-        # FOLLOWS LOGIC: Event 317 must end before event 321 begins 
-        problem += sum(value * var for value, var in variables['317'].items()) + int(events.loc[317, 'duration']) <= sum(value * var for value, var in variables['321'].items())
-
-        # CONTAINS LOGIC: e1 > e2
-        # e1 must begin before e2 begins
-        problem += sum(value * var for value, var in variables['327'].items()) <= sum(value * var for value, var in variables['326'].items())
-        # e1 must end after e2 ends
-        problem += sum(value * var for value, var in variables['324'].items()) + int(events.loc[324, 'duration']) >= sum(value * var for value, var in variables['326'].items()) + int(events.loc[326, 'duration'])
-
-        # OVERLAPS LOGIC: e1 | e2
-        # e1 must end before e2 ends
-        problem += sum(value * var for value, var in variables['328'].items()) + int(events.loc[328, 'duration']) <= sum(value * var for value, var in variables['323'].items()) + int(events.loc[323, 'duration'])
-        # e1 must end after e2 begins
-        problem += sum(value * var for value, var in variables['328'].items()) + int(events.loc[328, 'duration']) >= sum(value * var for value, var in variables['323'].items())
-        '''     
-
         # Change event index to a column
         same_type_events = events.drop(columns=['start', 'duration', 'day', 'profile']).reset_index()
         same_type_events = same_type_events.groupby('app')['index'].apply(list)
         # Only keep applications that have more than 2 events in the day
-        same_type_events = same_type_events[(same_type_events.str.len()) >= 2]
-        print(same_type_events)
+        same_type_events = same_type_events[(same_type_events.str.len()) >= 2]        
 
         for p in patterns:
             if p['type'] == '>':
                 problem += sum(value * var for value, var in variables[str(p['first'])].items()) <= sum(value * var for value, var in variables[str(p['second'])].items())
                 problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) >= sum(value * var for value, var in variables[str(p['second'])].items()) + int(events.loc[int(p['second']), 'duration'])
+            elif p['type'] == '->':
+                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) <= sum(value * var for value, var in variables[str(p['second'])].items())
+            elif p['type'] == '|':
+                # e1 must end before e2 ends
+                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) <= sum(value * var for value, var in variables[str(p['second'])].items()) + int(events.loc[int(p['second']), 'duration'])
+                # e1 must end after e2 begins
+                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) >= sum(value * var for value, var in variables[str(p['second'])].items())
 
         problem.solve()
 
