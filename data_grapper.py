@@ -171,14 +171,14 @@ class DataManager():
                 for key in pattern['time']:
                     if key == str(events['day'].iloc[0]):
                         pattern_type = re.split('(>|->|\|)', pattern['pattern'])
-                        print(pattern_type)
+                        #print(pattern_type)
 
                         first_time = pd.to_datetime(pattern['time'][key][0][0][0]).time()
                         first_time = first_time.hour*4 + (first_time.minute // 15)
 
                         second_time = pd.to_datetime(pattern['time'][key][0][1][0]).time()
                         second_time = second_time.hour*4 + (second_time.minute // 15)
-                        print(first_time, second_time)
+                        #print(first_time, second_time)
 
                         first_event = events.query('start == @first_time and app == @pattern_type[0]').index.item()
                         second_event = events.query('start == @second_time and app == @pattern_type[2]').index.item()
@@ -186,7 +186,7 @@ class DataManager():
                                          'first': first_event,
                                           'second': second_event})
                         
-        print(patterns)
+        #print(patterns)
 
         return patterns
 
@@ -195,7 +195,7 @@ class DataManager():
     # --------------------------------------------------------
     # TODO Break this up, it's really hefty
     def optimize(self):
-        prices = self.get_price_data(datetime.datetime(2015, 2, 1), datetime.datetime(2015, 2, 2))
+        prices = self.get_price_data(datetime.datetime(2015, 3, 1), datetime.datetime(2015, 3, 2))
 
         #print(prices)
 
@@ -203,11 +203,12 @@ class DataManager():
         print(price_vector)
 
         events = self.read_events_from_csv('events.csv').drop(columns=['end'])
-        events = events[events['start'].between(datetime.datetime(2014, 2, 1), datetime.datetime(2014, 2, 2))]
+        events = events[events['start'].between(datetime.datetime(2014, 2, 16), datetime.datetime(2014, 2, 17))]
 
         events['start'] = events['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
         events['duration'] = events['duration'].apply(lambda x: x // 15)
         events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
+
 
         print(events)
 
@@ -270,12 +271,22 @@ class DataManager():
 
         problem += objective
         
+        
         # TODO: Constraint that two events of same appliance cannot overlap.
         # Change event index to a column
         same_type_events = events.drop(columns=['start', 'duration', 'day', 'profile']).reset_index()
         same_type_events = same_type_events.groupby('app')['index'].apply(list)
         # Only keep applications that have more than 2 events in the day
-        same_type_events = same_type_events[(same_type_events.str.len()) >= 2]        
+        same_type_events = same_type_events[(same_type_events.str.len()) >= 2]
+        print(same_type_events)
+
+        for t in same_type_events:
+            amount = len(t)
+            for i in range(0, amount):
+                for j in range(i + 1, amount):
+                    problem += (sum(value * var for value, var in variables[str(t[i])].items()) + int(events.loc[int(t[i]), 'duration']) + 1 <= sum(value * var for value, var in variables[str(t[j])].items()) 
+                                or sum(value * var for value, var in variables[str(t[i])].items()) >= sum(value * var for value, var in variables[str(t[j])].items()) + int(events.loc[int(t[j]), 'duration']) + 1)
+        
 
         for p in patterns:
             if p['type'] == '>':
