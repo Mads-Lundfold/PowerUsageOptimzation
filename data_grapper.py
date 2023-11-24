@@ -5,7 +5,7 @@ import numpy as np
 from pulp import LpProblem, LpVariable, LpBinary, LpMinimize
 import re
 
-USAGE_THRESHOLD = 0.20
+USAGE_THRESHOLD = 0.2
 
 class DataManager():
     time_associations = {}
@@ -22,6 +22,9 @@ class DataManager():
         'bedroom_chargers' : 1,
         'gas_oven' : 10
     }
+
+    cost_before = 0
+    cost_after = 0
 
 
     # --------------------------------------------------------
@@ -43,11 +46,10 @@ class DataManager():
     
         self.get_time_associations(data)
 
-        events = self.get_events(data)
-        self.export_events_as_csv(events)
-        self.export_events_for_pattern_mining(events)
-        self.mine_temporal_patterns(support=0.1, confidence=0.6)
+        #events = self.get_events(data)
+        #self.export_events_as_csv(events)
         #self.export_events_for_pattern_mining(events)
+        #self.mine_temporal_patterns(support=0.1, confidence=0.6)
         #print(events)
         
 
@@ -209,7 +211,7 @@ class DataManager():
     # TODO Break this up, it's really hefty
     def optimize(self, day, next_day):
         day_price = day.replace(year = 2015)
-        next_day_price = next_day.replace(year = 2015)
+        next_day_price = next_day.replace(year = 2015, hour = 23)
         #print(day_price, next_day_price)
         prices = self.get_price_data(day_price, next_day_price)
 
@@ -242,19 +244,17 @@ class DataManager():
         '''
         for key, val in potential_start_times.items():
             print(key, val)
-
-        
-        print('COST BEFORE OPTIMIZATION:')
-        total_cost = 0
-        for e in events.itertuples():
-            if (e.start + e.duration > 96): continue
-            cost = np.sum(e.profile * price_vector[int(e.start) : int(e.start) + int(e.duration)])
-            total_cost = total_cost + cost
-        print(total_cost)
         '''
+        
+        
+        for e in events.itertuples():
+            cost = np.sum(e.profile * price_vector[int(e.start) : int(e.start) + int(len(e.profile))])
+            self.cost_before += cost
+        
+        
+        
 
         # LINEAR PRORGAMMING SHIT
-        # Just try to make it work with the washing machine, event 317
 
         # Define the minimization problem
         problem = LpProblem("Appliance_Rescheduling", LpMinimize)
@@ -282,7 +282,7 @@ class DataManager():
         same_type_events = same_type_events.groupby('app')['index'].apply(list)
         # Only keep applications that have more than 2 events in the day
         same_type_events = same_type_events[(same_type_events.str.len()) >= 2]
-        print(same_type_events)
+        #print(same_type_events)
 
         for t in same_type_events:
             amount = len(t)
@@ -307,14 +307,16 @@ class DataManager():
         problem.solve()
 
         #print(problem.objective.value())
-        return problem.objective.value()
+        self.cost_after += problem.objective.value()
 
-        '''
+        
         # Print the starting times for each event after solving the problem
+        '''
         for v in problem.variables():
             if v.varValue == 1:
                 print(v.name, "=", v.varValue)
         '''
+        
 
     def find_potential_starting_times(self, event):
         highest_satis = 0

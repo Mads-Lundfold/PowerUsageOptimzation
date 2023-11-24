@@ -9,8 +9,8 @@ from price_data import get_price_data
 #TODO Restructure entire project with nice architecture
 #TODO Make frontend :O
 
-start = 1388764400
-end = 1398766800
+start = 1388617200
+end = 1420070400
 
 TESTING_OPT = True
 TESTING_ONE_DAY = not True
@@ -24,27 +24,35 @@ running = True
 
 
 if TESTING_ONE_DAY:
-    day = datetime.datetime(year=2014, month=3, day=29)
+    day = datetime.datetime(year=2014, month=1, day=17)
     next_day = day + datetime.timedelta(days=1)
-    dm.optimize(day, next_day)
+    try:
+        dm.optimize(day, next_day)
+    except:
+        print('whoopsie')
+
+    print(f'Cost before {dm.cost_before}')
+    print(f'Cost after  {dm.cost_after}')
+    
 
 if TESTING_OPT:
     #dm.load_temporal_patterns('output/Experiment_minsup0.1_minconf_0.6/level2.json')
     total_cost = 0
     exception_days = list()
-    day_range = pd.date_range(start='01/04/2014', end='04/15/2014')
+    day_range = pd.date_range(start='01/04/2014', end='12/28/2014')
     for i in day_range:
         try:
             next_day = (i + datetime.timedelta(days=1))
             
-            cost = dm.optimize(i, next_day)
+            dm.optimize(i, next_day)
 
-            total_cost += cost
         except Exception as e:
             exception_days.append({'day': i, 'msg': e})
             pass
     
-    print(total_cost)
+    print(f'Cost before {dm.cost_before}')
+    print(f'Cost after  {dm.cost_after}')
+    
     for e in exception_days:
         print(e['day'], e['msg'])
     
