@@ -4,9 +4,8 @@ import os
 import numpy as np
 from pulp import LpProblem, LpVariable, LpBinary, LpMinimize
 import re
-#import psutil
 
-USAGE_THRESHOLD = 0.2
+USAGE_THRESHOLD = 0.20
 
 class DataManager():
     time_associations = {}
@@ -29,7 +28,7 @@ class DataManager():
     #               IMPORTING RAW DATA
     # --------------------------------------------------------
     def get_usage_data(self, start, end):
-        data = pd.read_csv("./Data/house_1_2014_15min_watts.csv").query("Time >= @start and Time <= @end")
+        data = pd.read_csv("./data/raw/house_1_2014_15min_watts.csv").query("Time >= @start and Time <= @end")
         data['Time'] = pd.to_datetime(data['Time'], unit='s')
         data.set_index('Time', inplace=True)
 
@@ -46,6 +45,8 @@ class DataManager():
 
         events = self.get_events(data)
         self.export_events_as_csv(events)
+        self.export_events_for_pattern_mining(events)
+        self.mine_temporal_patterns(support=0.1, confidence=0.6)
         #self.export_events_for_pattern_mining(events)
         #print(events)
         
@@ -54,15 +55,18 @@ class DataManager():
 
 
     def get_price_data(self, start, end):
-        data = pd.read_csv("./Data/Electricity_price_dataset_new.csv").drop(columns="cet_cest_timestamp").dropna()
+        data = pd.read_csv("./data/raw/Electricity_price_dataset_new.csv").drop(columns="cet_cest_timestamp").dropna()
 
         data['utc_timestamp'] = pd.to_datetime(data['utc_timestamp']).dt.tz_localize(None)
 
         data = data.rename(columns={'utc_timestamp' : 'Time'})
 
-        print(data)
+        #print(data)
 
         data = data.query('Time.between(@start, @end)')
+
+        data["GB_GBN_price_day_ahead"] = data["GB_GBN_price_day_ahead"].astype(float) / 1000000
+
         return data
 
     # --------------------------------------------------------
@@ -99,14 +103,18 @@ class DataManager():
                 if status_changes[time] != 0:
                     start = time
                     end = next(timestamps, time)
-                    events.append({
+                    
+                    event = {
                         'start': start,
                         'end': end,
                         'duration': (end - start).seconds / 60.0,
                         'app': app,
                         'day': (time.date() - first_day).days,
                         'profile': data[app].loc[start : end].iloc[:-1].tolist() # find better solution than end - 1
-                    })
+                    }
+
+                    if len(event['profile']) < 96:
+                        events.append(event)
         
         # Sort events in chronological order
         events = sorted(events, key=lambda x: x['start'])
@@ -184,7 +192,7 @@ class DataManager():
                         second_event = events.query('start == @second_time and app == @pattern_type[2]').index.item()
                         patterns.append({'type': pattern_type[1], 
                                          'first': first_event,
-                                          'second': second_event})
+                                         'second': second_event})
                         
         #print(patterns)
 
@@ -194,23 +202,29 @@ class DataManager():
     #               OPTIMIZATION
     # --------------------------------------------------------
     # TODO Break this up, it's really hefty
-    def optimize(self):
-        prices = self.get_price_data(datetime.datetime(2015, 3, 1), datetime.datetime(2015, 3, 2))
+    def optimize(self, day, next_day):
+        day_price = day.replace(year = 2015)
+        next_day_price = next_day.replace(year = 2015)
+        #print(day_price, next_day_price)
+        prices = self.get_price_data(day_price, next_day_price)
 
         #print(prices)
 
         price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
-        print(price_vector)
+        #print(price_vector)
 
         events = self.read_events_from_csv('events.csv').drop(columns=['end'])
-        events = events[events['start'].between(datetime.datetime(2014, 2, 16), datetime.datetime(2014, 2, 17))]
+        events = events[events['start'].between(day, next_day)]
+
+        if len(events) == 0:
+            return 0
 
         events['start'] = events['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
         events['duration'] = events['duration'].apply(lambda x: x // 15)
         events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
 
 
-        print(events)
+        #print(events)
 
         patterns = self.find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events)
         #print(self.time_associations)
@@ -218,19 +232,9 @@ class DataManager():
         potential_start_times = {}
 
         for event in events.itertuples():
-            valid_start_times = list()
-            for start_time in self.time_associations[event.app]:
-                valid_sequence = True
-                for i in range(start_time, start_time + int(event.duration)):
-                    if i not in self.time_associations[event.app]:
-                        valid_sequence = False
-                        break
-
-                if valid_sequence:
-                    valid_start_times.append(start_time)
-
-            potential_start_times[str(event.Index)] = valid_start_times
+            potential_start_times[str(event.Index)] = self.find_potential_starting_times(event)    
         
+        '''
         for key, val in potential_start_times.items():
             print(key, val)
 
@@ -242,7 +246,7 @@ class DataManager():
             cost = np.sum(e.profile * price_vector[int(e.start) : int(e.start) + int(e.duration)])
             total_cost = total_cost + cost
         print(total_cost)
-        
+        '''
 
         # LINEAR PRORGAMMING SHIT
         # Just try to make it work with the washing machine, event 317
@@ -252,12 +256,7 @@ class DataManager():
 
         # Create binary variables for each appliance we need to schedule
         variables = {}
-        for key in potential_start_times:
-
-            # Skip if the appliance does not have any potential starting times
-            if len(potential_start_times[key]) == 0:
-                continue
-            
+        for key in potential_start_times:           
             # Binary variable for each potential starting time of the event. 
             # If the event is started at the time slot, then the value is 1.
             variables[key] = {value: LpVariable(f'{key}_{value}', cat=LpBinary) for value in potential_start_times[key]}
@@ -302,9 +301,89 @@ class DataManager():
 
         problem.solve()
 
+        #print(problem.objective.value())
+        return problem.objective.value()
 
+        '''
         # Print the starting times for each event after solving the problem
         for v in problem.variables():
             if v.varValue == 1:
                 print(v.name, "=", v.varValue)
+        '''
 
+    def find_potential_starting_times(self, event):
+        highest_satis = 0
+        valid_start_times = list()
+
+        for start_time in self.time_associations[event.app]:
+            if start_time + event.duration > 95: break
+
+            event_range = list(range(start_time, start_time + int(event.duration)))
+            satis = len(set(event_range) & set(self.time_associations[event.app]))
+            
+            if satis > highest_satis:
+                highest_satis = satis
+                valid_start_times.clear()
+                valid_start_times.append(start_time) 
+            elif satis == highest_satis:
+                valid_start_times.append(start_time)
+     
+        if (self.time_associations[event.app][0] + event.duration > 95):
+            valid_start_times.clear()
+            valid_start_times.append(int(95 - event.duration))
+
+        return valid_start_times 
+
+
+
+    def check_events_without_starting_times(self):
+        day_range = pd.date_range(start='01/03/2014', end='04/15/2014')
+        
+        events_without_starting_times = []
+        for i in day_range:
+            day = i.date().strftime('%m-%d')
+            next_day = (i.date() + datetime.timedelta(days=1)).strftime('%m-%d')
+
+            prices = self.get_price_data('2015-' + day, '2015-' + next_day)
+
+            #print(prices)
+
+            price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
+            #print(price_vector)
+
+            events = self.read_events_from_csv('events.csv').drop(columns=['end'])
+            events = events[events['start'].between('2014-' + day, '2014-' + next_day)]
+
+            #print(events)
+
+            events['start'] = events['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
+            events['duration'] = events['duration'].apply(lambda x: x // 15)
+            events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
+
+
+            #print(events)
+
+            #patterns = self.find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events)
+            #print(self.time_associations)
+
+            potential_start_times = {}
+
+            for event in events.itertuples():
+                valid_start_times = list()
+                for start_time in self.time_associations[event.app]:
+                    valid_sequence = True
+                    for i in range(start_time, start_time + int(event.duration)):
+                        if i not in self.time_associations[event.app]:
+                            valid_sequence = False
+                            break
+
+                    if valid_sequence:
+                        valid_start_times.append(start_time)
+
+                potential_start_times[str(event.Index)] = valid_start_times
+            
+            for key, val in potential_start_times.items():
+                if len(potential_start_times[key]) == 0:
+                    events_without_starting_times.append(key)
+        
+        print(events_without_starting_times)
