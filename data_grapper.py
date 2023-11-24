@@ -64,6 +64,11 @@ class DataManager():
         #print(data)
 
         data = data.query('Time.between(@start, @end)')
+        
+        if len(data) < 25:
+            data = data.set_index('Time').resample('H').asfreq().reset_index()
+            data = data.fillna(method='ffill')
+                    
 
         data["GB_GBN_price_day_ahead"] = data["GB_GBN_price_day_ahead"].astype(float) / 1000000
 
@@ -266,7 +271,7 @@ class DataManager():
             problem += sum(variables[key][value] for value in potential_start_times[key]) == 1
 
         # For every event, find the beginning time slot where the price times profile is the lowest
-        objective = sum(sum(variables[key][value] * np.sum(events.loc[int(key), 'profile'] * price_vector[value : value + int(events.loc[int(key), 'duration'])]) for value in potential_start_times[key]) for key in potential_start_times)
+        objective = sum(sum(variables[key][value] * np.sum(events.loc[int(key), 'profile'] * price_vector[value : value + int(len(events.loc[int(key), 'profile']))]) for value in potential_start_times[key]) for key in potential_start_times)
 
         problem += objective
         

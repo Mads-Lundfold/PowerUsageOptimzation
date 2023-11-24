@@ -24,7 +24,7 @@ running = True
 
 
 if TESTING_ONE_DAY:
-    day = datetime.datetime(year=2014, month=2, day=1)
+    day = datetime.datetime(year=2014, month=3, day=29)
     next_day = day + datetime.timedelta(days=1)
     dm.optimize(day, next_day)
 
