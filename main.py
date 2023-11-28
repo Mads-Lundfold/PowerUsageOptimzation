@@ -2,15 +2,23 @@ import pandas as pd
 import datetime
 import sys
 from data_grapper import DataManager
+
 from events import get_events
 from price_data import get_price_data
 from data_loading import read_usage_data_csv
+from time_associations import find_time_associations
+from patterns import mine_temporal_patterns
 
 df = read_usage_data_csv()
 print(df)
-print(df.loc['2014-01-02 16:15:00'])
+
 events = get_events(df)
 print(events)
+
+time_associations = find_time_associations(df, threshold=0.15)
+print(time_associations)
+
+mine_temporal_patterns(support=0.1, confidence=0.6)
 
 sys.exit()
 
@@ -30,7 +38,6 @@ dm = DataManager()
 dm.get_usage_data(start, end)
 print("Successfully loaded the data.")
 running = True
-
 
 
 if TESTING_ONE_DAY:

@@ -43,5 +43,13 @@ def get_events(data: pd.DataFrame):
     
     # Sort events in chronological order
     events = sorted(events, key=lambda x: x['start'])
-    #print(pd.DataFrame(events))
-    return pd.DataFrame(events)
+    events = pd.DataFrame(events)
+    
+    write_events_to_csv(events)
+
+    return events
+
+
+def write_events_to_csv(events: pd.DataFrame):
+    events.to_csv('events.csv')
+
