@@ -4,13 +4,12 @@ from data_grapper import DataManager
 from usage_data import get_events_from_data
 from price_data import get_price_data
 
-#TODO Linear programming optimizer
 #TODO Comments on code
 #TODO Restructure entire project with nice architecture
 #TODO Make frontend :O
 
 start = 1388617200
-end = 1420070400
+end = 1420066799
 
 TESTING_OPT = True
 TESTING_ONE_DAY = not True

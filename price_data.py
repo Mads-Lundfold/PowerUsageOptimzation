@@ -15,4 +15,10 @@ def get_price_data(start, end):
 
     data = data.query('Time.between(@start, @end)')
 
+    if len(data) < 25:
+            data = data.set_index('Time').resample('H').asfreq().reset_index()
+            data = data.fillna(method='ffill')
+                    
+    data["GB_GBN_price_day_ahead"] = data["GB_GBN_price_day_ahead"].divide(1000000)
+
     return data

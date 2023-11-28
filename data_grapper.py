@@ -72,7 +72,7 @@ class DataManager():
             data = data.fillna(method='ffill')
                     
 
-        data["GB_GBN_price_day_ahead"] = data["GB_GBN_price_day_ahead"].astype(float) / 1000000
+        data["GB_GBN_price_day_ahead"] = data["GB_GBN_price_day_ahead"].divide(1000000)
 
         return data
 
@@ -210,6 +210,8 @@ class DataManager():
     # --------------------------------------------------------
     # TODO Break this up, it's really hefty
     def optimize(self, day, next_day):
+
+        # FORMAT PRICES
         day_price = day.replace(year = 2015)
         next_day_price = next_day.replace(year = 2015, hour = 23)
         #print(day_price, next_day_price)
@@ -220,6 +222,7 @@ class DataManager():
         price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
         #print(price_vector)
 
+        # FORMAT EVENST
         events = self.read_events_from_csv('events.csv').drop(columns=['end'])
         events = events[events['start'].between(day, next_day)]
 
@@ -233,6 +236,7 @@ class DataManager():
 
         #print(events)
 
+        # FORMAT PATTERNS
         patterns = self.find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events)
         #print(self.time_associations)
 
@@ -294,16 +298,14 @@ class DataManager():
 
         for p in patterns:
             if p['type'] == '>':
-                problem += sum(value * var for value, var in variables[str(p['first'])].items()) <= sum(value * var for value, var in variables[str(p['second'])].items())
-                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) >= sum(value * var for value, var in variables[str(p['second'])].items()) + int(events.loc[int(p['second']), 'duration'])
+                problem += self.first_start_before_second_start(p, variables)
+                problem += self.first_end_after_second_end(p, variables, events)
             elif p['type'] == '->':
-                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) <= sum(value * var for value, var in variables[str(p['second'])].items())
+                problem += self.first_end_before_second_start(p, variables, events)
             elif p['type'] == '|':
-                # e1 must end before e2 ends
-                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) <= sum(value * var for value, var in variables[str(p['second'])].items()) + int(events.loc[int(p['second']), 'duration'])
-                # e1 must end after e2 begins
-                problem += sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) >= sum(value * var for value, var in variables[str(p['second'])].items())
-
+                problem += self.first_start_before_second_start(p, variables)
+                problem += self.first_end_before_second_end(p, variables, events)
+        
         problem.solve()
 
         #print(problem.objective.value())
@@ -316,7 +318,19 @@ class DataManager():
             if v.varValue == 1:
                 print(v.name, "=", v.varValue)
         '''
-        
+    
+    def first_start_before_second_start(self, p, variables):
+        return sum(value * var for value, var in variables[str(p['first'])].items()) <= sum(value * var for value, var in variables[str(p['second'])].items())
+    
+    def first_end_after_second_end(self, p, variables, events):
+        return sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) >= sum(value * var for value, var in variables[str(p['second'])].items()) + int(events.loc[int(p['second']), 'duration'])
+    
+    def first_end_before_second_start(self, p, variables, events):
+        return sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) <= sum(value * var for value, var in variables[str(p['second'])].items())
+
+    def first_end_before_second_end(self, p, variables, events):
+        return sum(value * var for value, var in variables[str(p['first'])].items()) + int(events.loc[int(p['first']), 'duration']) <= sum(value * var for value, var in variables[str(p['second'])].items()) + int(events.loc[int(p['second']), 'duration'])
+
 
     def find_potential_starting_times(self, event):
         highest_satis = 0
