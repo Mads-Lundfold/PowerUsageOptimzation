@@ -64,7 +64,7 @@ def load_data():
         print(data)
         df.append(data)
     
-    df = pd.concat(df).fillna(0.0)
+    df = pd.concat(df, axis=1).fillna(0.0)
     print(df)
 
     write_usage_data_to_csv(df)
@@ -73,5 +73,9 @@ def load_data():
 def write_usage_data_to_csv(data: pd.DataFrame):
     data.to_csv('usage_data.csv')
 
+def read_usage_data_csv() -> pd.DataFrame:
+    df = pd.read_csv('usage_data.csv')
+    df['Time'] = pd.to_datetime(df['Time'])
+    df = df.set_index('Time')
+    return df
 
-load_data()

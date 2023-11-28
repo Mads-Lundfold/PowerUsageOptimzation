@@ -1,8 +1,18 @@
 import pandas as pd
 import datetime
+import sys
 from data_grapper import DataManager
-from usage_data import get_events_from_data
+from events import get_events
 from price_data import get_price_data
+from data_loading import read_usage_data_csv
+
+df = read_usage_data_csv()
+print(df)
+print(df.loc['2014-01-02 16:15:00'])
+events = get_events(df)
+print(events)
+
+sys.exit()
 
 #TODO Comments on code
 #TODO Restructure entire project with nice architecture
@@ -10,6 +20,7 @@ from price_data import get_price_data
 
 start = 1388617200
 end = 1420066799
+
 
 TESTING_OPT = True
 TESTING_ONE_DAY = not True
