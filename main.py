@@ -7,7 +7,7 @@ from events import get_events
 from price_data import get_price_data
 from data_loading import read_usage_data_csv
 from time_associations import find_time_associations
-from patterns import mine_temporal_patterns
+from patterns import mine_temporal_patterns, find_patterns_on_day
 
 df = read_usage_data_csv()
 print(df)
@@ -19,6 +19,14 @@ time_associations = find_time_associations(df, threshold=0.15)
 print(time_associations)
 
 mine_temporal_patterns(support=0.1, confidence=0.6)
+
+
+day = datetime.datetime(year=2014, month=1, day=17)
+next_day = day + datetime.timedelta(days=1)
+
+events_on_day = events[events['start'].between(day, next_day)]
+
+print(find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events_on_day))
 
 sys.exit()
 
