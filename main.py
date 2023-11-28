@@ -1,6 +1,8 @@
 import pandas as pd
+import numpy as np
 import datetime
 import sys
+import re
 from data_grapper import DataManager
 
 from events import get_events
@@ -8,34 +10,60 @@ from price_data import get_price_data
 from data_loading import read_usage_data_csv
 from time_associations import find_time_associations
 from patterns import mine_temporal_patterns, find_patterns_on_day
+from optimization import optimize
 
-df = read_usage_data_csv()
-print(df)
 
-events = get_events(df)
-print(events)
+start = 1388617200
+end = 1420066799
 
-time_associations = find_time_associations(df, threshold=0.15)
-print(time_associations)
+usage = read_usage_data_csv()
+#print(usage)
+
+events = get_events(usage)
+#print(events)
+
+time_associations = find_time_associations(usage, threshold=0.2)
+#print(time_associations)
 
 mine_temporal_patterns(support=0.1, confidence=0.6)
 
 
-day = datetime.datetime(year=2014, month=1, day=17)
+day = datetime.datetime(year=2014, month=1, day=19)
 next_day = day + datetime.timedelta(days=1)
 
 events_on_day = events[events['start'].between(day, next_day)]
 
-print(find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events_on_day))
+patterns_on_day = find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events_on_day)
+
+
+# Quantizing data
+# FORMAT PRICES
+day_price = day.replace(year = 2015)
+next_day_price = next_day.replace(year = 2015, hour = 23)
+#print(day_price, next_day_price)
+prices = get_price_data(day_price, next_day_price)
+price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
+#print(price_vector)
+
+# FORMAT EVENTS
+events = events[events['start'].between(day, next_day)]
+events = events.drop(columns=['end', 'day'])
+
+events['start'] = events['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
+events['duration'] = events['duration'].apply(lambda x: x // 15)
+
+#events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
+
+#print(price_vector)
+#print(events)
+
+optimize(events=events, prices=price_vector, patterns=patterns_on_day, time_associations=time_associations)
 
 sys.exit()
 
 #TODO Comments on code
 #TODO Restructure entire project with nice architecture
 #TODO Make frontend :O
-
-start = 1388617200
-end = 1420066799
 
 
 TESTING_OPT = True

@@ -222,7 +222,7 @@ class DataManager():
         price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
         #print(price_vector)
 
-        # FORMAT EVENST
+        # FORMAT EVENTS
         events = self.read_events_from_csv('events.csv').drop(columns=['end'])
         events = events[events['start'].between(day, next_day)]
 
