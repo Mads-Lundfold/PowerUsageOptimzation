@@ -27,37 +27,48 @@ time_associations = find_time_associations(usage, threshold=0.2)
 
 mine_temporal_patterns(support=0.1, confidence=0.6)
 
+day_range = pd.date_range(start='01/05/2014', end='12/28/2014')
 
-day = datetime.datetime(year=2014, month=1, day=19)
-next_day = day + datetime.timedelta(days=1)
+num_infeasible = 0
 
-events_on_day = events[events['start'].between(day, next_day)]
+for day in day_range:
+    try:
+        next_day = (day + datetime.timedelta(days=1))
+        print(day, next_day)
 
-patterns_on_day = find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events_on_day)
+        events_on_day = events[events['start'].between(day, next_day)]
+
+        print(events_on_day)
+
+        patterns_on_day = find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events_on_day)
 
 
-# Quantizing data
-# FORMAT PRICES
-day_price = day.replace(year = 2015)
-next_day_price = next_day.replace(year = 2015, hour = 23)
-#print(day_price, next_day_price)
-prices = get_price_data(day_price, next_day_price)
-price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
-#print(price_vector)
+        # Quantizing data
+        # FORMAT PRICES
+        day_price = day.replace(year = 2015)
+        next_day_price = next_day.replace(year = 2015, hour = 23)
+        #print(day_price, next_day_price)
+        prices = get_price_data(day_price, next_day_price)
+        price_vector = np.array(np.repeat(prices['GB_GBN_price_day_ahead'], 4))
+        #print(price_vector)
 
-# FORMAT EVENTS
-events = events[events['start'].between(day, next_day)]
-events = events.drop(columns=['end', 'day'])
+        # FORMAT EVENTS
+        events_on_day['start'] = events_on_day['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
+        events_on_day['duration'] = events_on_day['duration'].apply(lambda x: x // 15)
 
-events['start'] = events['start'].apply(lambda x: x.hour*4 + (x.minute // 15))
-events['duration'] = events['duration'].apply(lambda x: x // 15)
+        print(events_on_day)
 
-#events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
+        #events['profile'] = events['profile'].apply(lambda x: [float(idx) for idx in x.strip("[]").split(', ')])
 
-#print(price_vector)
-#print(events)
+        #print(price_vector)
+        #print(events)
 
-optimize(events=events, prices=price_vector, patterns=patterns_on_day, time_associations=time_associations)
+        optimize(events=events_on_day, prices=price_vector, patterns=patterns_on_day, time_associations=time_associations)
+
+    except Exception as e:
+        pass
+
+print(num_infeasible)
 
 sys.exit()
 
