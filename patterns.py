@@ -2,8 +2,10 @@ import pandas as pd
 import os
 import re
 
+data_directory = 'data/derived/'
+
 def format_events_for_pattern_mining():
-    events = pd.read_csv('events.csv')
+    events = pd.read_csv(data_directory + 'events.csv')
     events = events.drop(columns=['Unnamed: 0', 'duration', 'profile'])
 
     events['start'] = pd.to_datetime(events['start']).map(pd.Timestamp.timestamp)
@@ -11,12 +13,12 @@ def format_events_for_pattern_mining():
     events['end'] = pd.to_datetime(events['end']).map(pd.Timestamp.timestamp)
     events['end'] = events['end'].astype(int)
 
-    events.to_csv('mining_events.csv', index=False, header=False)
+    events.to_csv(data_directory + 'mining_events.csv', index=False, header=False)
 
 
 def mine_temporal_patterns(support, confidence):
     format_events_for_pattern_mining()
-    command = f"py ./TPM/main.py -i mining_events.csv -o output -ms {support} -mc {confidence} -mps 2"
+    command = f"py ./TPM/main.py -i data/derived/mining_events.csv -o data/derived/patterns -ms {support} -mc {confidence} -mps 2"
     print(command)
     os.system(command)
 

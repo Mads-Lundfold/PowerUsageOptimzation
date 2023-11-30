@@ -25,6 +25,7 @@ power_thresholds = {
         'gas_oven' : 10
     }
 
+data_directory = 'data/derived/'
 
 def rename_channel_files_to_appliance_names(directory_path: str):
     labels = pd.read_csv(f'{directory_path}\\labels.dat', sep=' ', names=['channel', 'label']).set_index('channel')
@@ -71,10 +72,10 @@ def load_data():
 
 
 def write_usage_data_to_csv(data: pd.DataFrame):
-    data.to_csv('usage_data.csv')
+    data.to_csv(data_directory + 'usage_data.csv')
 
 def read_usage_data_csv() -> pd.DataFrame:
-    df = pd.read_csv('usage_data.csv')
+    df = pd.read_csv(data_directory + 'usage_data.csv')
     df['Time'] = pd.to_datetime(df['Time'])
     df = df.set_index('Time')
     return df

@@ -6,7 +6,7 @@ import re
 
 from events import get_events
 from price_data import get_price_data
-from data_loading import read_usage_data_csv
+from data_loading import read_usage_data_csv, load_data
 from time_associations import find_time_associations
 from patterns import mine_temporal_patterns, find_patterns_on_day
 from optimization import optimize
@@ -34,7 +34,7 @@ def main():
 
             events_on_day = events[events['start'].between(day, next_day)]
 
-            patterns_on_day = find_patterns_on_day('output/Experiment_minsup0.1_minconf_0.6/level2.json', events_on_day)
+            patterns_on_day = find_patterns_on_day('data/derived/patterns/Experiment_minsup0.1_minconf_0.6/level2.json', events_on_day)
 
             # Quantizing data
             # FORMAT PRICES

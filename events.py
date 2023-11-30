@@ -51,5 +51,6 @@ def get_events(data: pd.DataFrame):
 
 
 def write_events_to_csv(events: pd.DataFrame):
-    events.to_csv('events.csv')
+    data_directory = 'data/derived/'
+    events.to_csv(data_directory + 'events.csv')
 
